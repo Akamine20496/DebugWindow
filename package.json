@@ -1,0 +1,26 @@
+{
+  "name": "DebugWindow",
+  "description": "Debug Window for FNF Mobile",
+  "buildConfig": {
+    "packageName": "me.funkintest.fnf",
+    "name": "DebugWindow",
+    "files": [
+      "fonts",
+      "scripts",
+      "_polymod_icon.png",
+      "_polymod_meta.json"
+    ]
+  },
+  "scripts": {
+    "predeploy": "node scripts/prebuild.js",
+    "deploy": "node scripts/build.js",
+    "dev": "node scripts/copy-to-android.js"
+  },
+  "author": "Akamine96204",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "archiver": "^8.0.0",
+    "vscode-debugadapter": "^1.51.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "DebugWindow",
+  "description": "Debug Window for FNF Mobile V-Slice",
+  "contributors": [
+    {
+      "name": "Akamine20496",
+      "role": "Programmer",
+      "url": "Github: https://github.com/Akamine20496"
+    }
+  ],
+  "api_version": "0.8.6",
+  "mod_version": "1.0.0"
+}

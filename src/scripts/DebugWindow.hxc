@@ -1,0 +1,539 @@
+package funkin.play;
+
+import funkin.Paths;
+import funkin.play.PlayState;
+import funkin.save.Save;
+import funkin.modding.events.CountdownScriptEvent;
+import funkin.modding.events.ScriptEvent;
+import funkin.modding.events.ScriptEvent.StateChangeScriptEvent;
+import funkin.modding.events.UpdateScriptEvent;
+import funkin.modding.module.Module;
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.FlxCamera;
+import flixel.util.FlxColor;
+import flixel.util.FlxSpriteUtil;
+import flixel.group.FlxGroup;
+import flixel.text.FlxText;
+import flixel.text.FlxText.FlxTextAlign;
+import openfl.system.System;
+import StringTools;
+import Reflect;
+
+class DebugWindow extends Module
+{
+  // Flixel Object Group
+  var windowGroup:FlxGroup;
+
+  // Window dimensions
+  var windowWidth:Int = 280;
+  var windowHeight:Int = 80;
+  var maxWindowHeight:Int = 360;
+
+  // Status window
+  var STATUS(default, null):Int = 0;
+  var statusBackground:FlxSprite;
+  var statusTitleBar:FlxSprite;
+  var statusTitle:FlxText;
+  var statusText:FlxText;
+
+  // Console window
+  var LOG(default, null):Int = 1;
+  var logBackground:FlxSprite;
+  var logTitleBar:FlxSprite;
+  var logTitle:FlxText;
+  var logText:FlxText;
+
+  // corner radius
+  var cornerRadius:Float = 16;
+
+  // FIFO console
+  var messages:Array<String> = [];
+  var maxMessages:Int = 10;
+
+  var ownerState:Dynamic;
+  var hudCamera:FlxCamera;
+
+  // fps and ram
+  var statusRefreshTimer:Float = 0;
+  var fpsElapsed:Float = 0;
+  var fpsFrameCount:Int = 0;
+  var currentFPS:Int = 0;
+  var gcMem:String = 0;
+  var peakMemBytes:Float = 0;
+
+  // values from option page
+  var isWindowVisible:Bool;
+  var windowOpacity:Float;
+  var windowRefreshInterval:Float;
+
+  public function new()
+  {
+    super("DebugWindow");
+  }
+
+  // setter / preview functions from option page section
+  public function updateWindowVisibility():Void
+  {
+    isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+    if (windowGroup != null) windowGroup.visible = isWindowVisible;
+  }
+
+  public function updateWindowOpacity():Void
+  {
+    var rawValue:Float = cast Save.instance.modOptions.get("debugWindowOpacity");
+    windowOpacity = rawValue;
+
+    // Update Status Window Opacity (temporary since they'll lose reference upon leaving option)
+    statusBackground.alpha = rawValue;
+    statusTitleBar.alpha = rawValue;
+
+    // Update Debug Console Window Opacity (temporary since they'll lose reference upon leaving option)
+    logBackground.alpha = rawValue;
+    logTitleBar.alpha = rawValue;
+  }
+
+  public function updateWindowRefreshInterval():Void
+  {
+    windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+  }
+
+  // class functions and lifecycle section
+  function loadOptionValues():Void
+  {
+    isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+    windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
+    windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+  }
+
+  function getMemoryLabel():String
+  {
+    var currentBytes:Float = System.totalMemoryNumber;
+
+    if (currentBytes > peakMemBytes) peakMemBytes = currentBytes;
+
+    return '${formatBytes(currentBytes)} / ${formatBytes(peakMemBytes)}';
+  }
+
+  function formatBytes(bytes:Float):String
+  {
+    var mb:Float = bytes / 1024 / 1024;
+
+    if (mb >= 1024)
+    {
+      var gb:Float = Math.round((mb / 1024) * 100) / 100;
+      return '$gb GB';
+    }
+
+    var roundedMb:Float = Math.round(mb * 100) / 100;
+    return '$roundedMb MB';
+  }
+
+  function createHudCamera():Void
+  {
+    if (hudCamera != null && FlxG.cameras.list.contains(hudCamera)) return;
+
+    hudCamera = new FlxCamera();
+    hudCamera.bgColor = 0x00000000;
+    hudCamera.zoom = 1;
+    hudCamera.followLerp = 0;
+
+    FlxG.cameras.add(hudCamera, false);
+  }
+
+  function createPanel(x:Int, y:Int, width:Int, height:Int, title:String, group:FlxGroup):Void
+  {
+    var background = new FlxSprite(x, y);
+    background.makeGraphic(width, height, FlxColor.TRANSPARENT, true);
+    FlxSpriteUtil.drawRoundRect(background, 0, 0, width, height, cornerRadius, cornerRadius, 0xEE101820);
+    background.alpha = windowOpacity;
+
+    var titleBar = new FlxSprite(x, y);
+    titleBar.makeGraphic(width, 26, FlxColor.TRANSPARENT, true);
+    // args: sprite, x, y, width, height, TopLeft, TopRight, BottomLeft, BottomRight, Color
+    FlxSpriteUtil.drawRoundRectComplex(titleBar, 0, 0, width, 26, cornerRadius, cornerRadius, 0, 0, 0xFF243746);
+    titleBar.alpha = windowOpacity;
+
+    var debugFont = Paths.font("GoogleSans-SemiBold.ttf");
+
+    var titleText = new FlxText(x + 8, y + 5, width - 16, title, 14);
+    titleText.setFormat(debugFont, 14, 0xFFFFFFFF, FlxTextAlign.LEFT);
+
+    var content = new FlxText(x + 8, y + 34, width - 16, "", 13);
+    content.setFormat(debugFont, 13, 0xFFFFFFFF, FlxTextAlign.LEFT);
+    content.fieldWidth = width - 16;
+    content.wordWrap = true;
+    content.autoSize = true;
+
+    if (title == "DEBUG CONSOLE")
+    {
+      content.color = 0xFF00FF00;
+    }
+
+    background.scrollFactor.set(0, 0);
+    titleBar.scrollFactor.set(0, 0);
+    titleText.scrollFactor.set(0, 0);
+    content.scrollFactor.set(0, 0);
+
+    background.cameras = [hudCamera];
+    titleBar.cameras = [hudCamera];
+    titleText.cameras = [hudCamera];
+    content.cameras = [hudCamera];
+
+    group.add(background);
+    group.add(titleBar);
+    group.add(titleText);
+    group.add(content);
+  }
+
+  function safe(value:Dynamic, fallback:String = "NULL"):String
+  {
+    if (value == null) return fallback;
+
+    var result = Std.string(value);
+
+    if (result == null || StringTools.trim(result) == "") return fallback;
+
+    return result;
+  }
+
+  function getStatusRefreshInterval():Float
+  {
+    var interval:Float = windowRefreshInterval;
+
+    interval = Math.max(100, Math.min(200, interval));
+
+    return interval / 1000;
+  }
+
+  function detachWindowsFromState():Void
+  {
+    if (ownerState == null || windowGroup == null) return;
+
+    ownerState.remove(windowGroup, true);
+    ownerState = null;
+  }
+
+  function attachWindowsToState():Void
+  {
+    var state = FlxG.state;
+
+    if (state == null || windowGroup == null) return;
+
+    if (ownerState == state) return;
+
+    if (ownerState != null) detachWindowsFromState();
+
+    ownerState = state;
+    state.add(windowGroup);
+  }
+
+  function ensureWindows():Void
+  {
+    if (FlxG.state == null) return;
+
+    if (windowGroup == null) createWindows();
+    else
+      attachWindowsToState();
+
+    if (windowGroup != null) windowGroup.visible = isWindowVisible;
+  }
+
+  function createWindows():Void
+  {
+    // Prevents duplicate creation if already active in the current state
+    if (windowGroup != null || FlxG.state == null) return;
+
+    ownerState = FlxG.state;
+
+    createHudCamera();
+
+    windowGroup = new FlxGroup();
+
+    var viewportWidth = Std.int(FlxG.width);
+    var width = Std.int(Math.min(windowWidth, viewportWidth - 20));
+
+    var x = 10;
+    var y = 10;
+
+    // create song status window
+    createPanel(x, y, width, windowHeight, "STATUS", windowGroup);
+
+    var logY = y + windowHeight + 8;
+
+    maxWindowHeight = Std.int(Math.max(windowHeight, FlxG.height - logY - 10));
+
+    // create debug console window
+    createPanel(x, logY, width, maxWindowHeight, "DEBUG CONSOLE", windowGroup);
+
+    // store reference of status UIs
+    statusBackground = cast windowGroup.members[0];
+    statusTitleBar = cast windowGroup.members[1];
+    statusTitle = cast windowGroup.members[2];
+    statusText = cast windowGroup.members[3];
+    // store reference of log UIs
+    logBackground = cast windowGroup.members[4];
+    logTitleBar = cast windowGroup.members[5];
+    logTitle = cast windowGroup.members[6];
+    logText = cast windowGroup.members[7];
+
+    ownerState.add(windowGroup);
+  }
+
+  function destroyWindows():Void
+  {
+    // If ownerState is no longer the active state, Flixel already destroyed its children
+    if (ownerState != null && ownerState == FlxG.state && windowGroup != null)
+    {
+      ownerState.remove(windowGroup, true);
+      windowGroup.destroy();
+    }
+
+    windowGroup = null;
+
+    statusBackground = null;
+    statusTitleBar = null;
+    statusTitle = null;
+    statusText = null;
+
+    logBackground = null;
+    logTitleBar = null;
+    logTitle = null;
+    logText = null;
+
+    if (hudCamera != null)
+    {
+      FlxG.cameras.remove(hudCamera, true);
+      hudCamera = null;
+    }
+
+    ownerState = null;
+  }
+
+  function updateLogPosition():Void
+  {
+    if (statusBackground == null || logBackground == null) return;
+
+    var gap = 8;
+    var newY = statusBackground.y + statusBackground.height + gap;
+
+    // Update Debug Console background.
+    logBackground.y = newY;
+
+    // Update title bar.
+    logTitleBar.y = newY;
+
+    // Update title text.
+    logTitle.y = newY + 5;
+
+    // Update console text.
+    logText.y = newY + 34;
+  }
+
+  // Refresh text based on type STATUS or LOG
+  function updateText(type:Int):Void
+  {
+    switch (type)
+    {
+      case STATUS:
+        {
+          if (statusBackground == null) return;
+          if (statusText.graphic == null || statusBackground.graphic == null) return;
+
+          statusText.text = getStatus();
+          statusText.updateHitbox();
+
+          var requiredHeight = statusText.height + 42;
+          var targetHeight = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+
+          statusBackground.scale.y = targetHeight / statusBackground.frameHeight;
+          statusBackground.updateHitbox();
+
+          // Reposition Debug Console whenever Song Status height changes.
+          updateLogPosition();
+        }
+      case LOG:
+        {
+          if (logText == null || logBackground == null) return;
+          if (logText.graphic == null || logBackground.graphic == null) return;
+
+          var textContent = messages.join("\n");
+          logText.text = (textContent == "") ? "[Debug Console] Waiting for log update" : textContent;
+          logText.updateHitbox();
+
+          var requiredHeight = logText.height + 42;
+          var targetHeight = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+
+          // update the debug window background's rounded corners
+          var width:Int = Std.int(logBackground.frameWidth);
+          var height:Int = Std.int(targetHeight);
+
+          logBackground.makeGraphic(width, height, FlxColor.TRANSPARENT, true);
+          FlxSpriteUtil.drawRoundRect(logBackground, 0, 0, width, height, cornerRadius, cornerRadius, 0xEE101820);
+        }
+    }
+  }
+
+  // show status
+  function getStatus():String
+  {
+    var playState = PlayState.instance;
+
+    if (playState == null)
+    {
+      return "FPS: " + currentFPS + "\n" +
+        "GC MEM: " + gcMem + "\n\n" +
+        "Currently not in PlayState";
+    }
+
+    var stageName:Dynamic = null;
+    var difficulty:Dynamic = null;
+    var songName:Dynamic = null;
+    var stagePlayer:Dynamic = null;
+    var stageOpponent:Dynamic = null;
+    var playerVocals:Dynamic = null;
+
+    if (playState.currentSong != null)
+    {
+      var currentSong = playState.currentSong;
+
+      songName = currentSong.id;
+      difficulty = playState.currentDifficulty;
+
+      var songVariation = currentSong.getDifficulty(playState.currentDifficulty, playState.currentVariation);
+
+      if (songVariation != null && songVariation.characters != null) playerVocals = songVariation.characters.playerVocals;
+    }
+
+    if (playState.currentStage != null)
+    {
+      var currentStage = playState.currentStage;
+
+      if (currentStage.getBoyfriend() != null) stagePlayer = currentStage.getBoyfriend().characterId;
+      if (currentStage.getDad() != null) stageOpponent = currentStage.getDad().characterId;
+
+      stageName = currentStage.id;
+    }
+
+    return "FPS: " + currentFPS + "\n" +
+      "GC MEM: " + gcMem + "\n\n" +
+      "Stage: " + safe(stageName) + "\n" +
+      "Difficulty: " + safe(difficulty) + "\n" +
+      "Song: " + safe(songName) + "\n" +
+      "Player: " + safe(stagePlayer) + "\n" +
+      "Opponent: " + safe(stageOpponent) + "\n" +
+      "Player Vocals: " + safe(playerVocals);
+  }
+
+  override function onCreate(event:ScriptEvent):Void
+  {
+    super.onCreate(event);
+
+    // load values from option page
+    loadOptionValues();
+
+    ensureWindows();
+    updateText(STATUS);
+    updateText(LOG);
+  }
+
+  override function onDestroy(event:ScriptEvent):Void
+  {
+    super.onDestroy(event);
+    destroyWindows();
+  }
+
+  // Update status when countdown starts.
+  override function onCountdownStart(event:CountdownScriptEvent):Void
+  {
+    super.onCountdownStart(event);
+
+    updateText(STATUS);
+
+    var playState = PlayState.instance;
+
+    if (playState != null && playState.currentChart != null)
+    {
+      var currentChart = playState.currentChart;
+      var voicePaths = currentChart.buildPlayerVoiceList();
+
+      log("[Player Voice Paths] " + voicePaths.join(", "));
+    }
+  }
+
+  override function onUpdate(event:UpdateScriptEvent):Void
+  {
+    super.onUpdate(event);
+
+    var elapsed:Float = event.elapsed;
+
+    // Count frames for the FPS estimate.
+    fpsFrameCount++;
+    fpsElapsed += elapsed;
+    statusRefreshTimer += elapsed;
+
+    var refreshInterval:Float = getStatusRefreshInterval();
+
+    if (statusRefreshTimer < refreshInterval) return;
+
+    // FPS averaged over the elapsed measurement window.
+    if (fpsElapsed > 0) currentFPS = Math.round(fpsFrameCount / fpsElapsed);
+
+    fpsFrameCount = 0;
+    fpsElapsed = 0;
+
+    // Memory reported by OpenFL
+    gcMem = getMemoryLabel();
+
+    // Preserve leftover time so the interval doesn't drift as much.
+    statusRefreshTimer %= refreshInterval;
+
+    updateText(STATUS);
+  }
+
+  // Clean status upon song end
+  override function onSongEnd(event:ScriptEvent):Void
+  {
+    super.onSongEnd(event);
+    updateText(STATUS);
+  }
+
+  override function onStateChangeBegin(event:StateChangeScriptEvent):Void
+  {
+    super.onStateChangeBegin(event);
+
+    if (Std.isOfType(FlxG.state, PlayState))
+    {
+      updateText(STATUS);
+    }
+
+    detachWindowsFromState();
+  }
+
+  override function onStateChangeEnd(event:StateChangeScriptEvent):Void
+  {
+    super.onStateChangeEnd(event);
+
+    destroyWindows();
+    ensureWindows();
+    updateText(STATUS);
+    updateText(LOG);
+  }
+
+  // store text to debug console.
+  public function log(message:String):Void
+  {
+    messages.push(message);
+
+    while (messages.length > maxMessages)
+      messages.shift();
+
+    updateText(LOG);
+  }
+
+  public function clearLogs():Void
+  {
+    messages = [];
+    updateText(LOG);
+  }
+}

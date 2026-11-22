@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "funkin-run-game",
+      "request": "launch",
+      "name": "Copy & Run PC FNF",
+      "preLaunchTask": "Funk: Copy this V-Slice mod to local FNF"
+    },
+    {
+      "type": "funkin-run-game",
+      "request": "launch",
+      "name": "Launch current mod on mobile",
+      "isMobile": true,
+      "preLaunchTask": "Funk ADB: Copy this V-Slice mod to mobile",
+      "execName": "me.funkin.fnf"
+    },
+    {
+      "type": "funkin-run-game",
+      "request": "launch",
+      "name": "Just run FNF",
+      "preLaunchTask": ""
+    }
+  ]
+}
