@@ -26,7 +26,8 @@ class DebugWindow extends Module
   var windowGroup:FlxGroup;
 
   // Window dimensions
-  var windowWidth:Int = 280;
+  var statusWindowWidth:Int = 300;
+  var logWindowWidth:Int = 340;
   var windowHeight:Int = 80;
   var maxWindowHeight:Int = 360;
 
@@ -49,7 +50,7 @@ class DebugWindow extends Module
 
   // FIFO console
   var messages:Array<String> = [];
-  var maxMessages:Int = 10;
+  var maxMessages:Int = 8;
 
   var ownerState:Dynamic;
   var hudCamera:FlxCamera;
@@ -66,6 +67,10 @@ class DebugWindow extends Module
   var isWindowVisible:Bool;
   var windowOpacity:Float;
   var windowRefreshInterval:Float;
+
+  // fonts
+  var titleFont:String;
+  var contentFont:String;
 
   public function new()
   {
@@ -143,31 +148,32 @@ class DebugWindow extends Module
 
   function createPanel(x:Int, y:Int, width:Int, height:Int, title:String, group:FlxGroup):Void
   {
-    var background = new FlxSprite(x, y);
+    var background:FlxSprite = new FlxSprite(x, y);
     background.makeGraphic(width, height, FlxColor.TRANSPARENT, true);
     FlxSpriteUtil.drawRoundRect(background, 0, 0, width, height, cornerRadius, cornerRadius, 0xEE101820);
     background.alpha = windowOpacity;
 
-    var titleBar = new FlxSprite(x, y);
+    var titleBar:FlxSprite = new FlxSprite(x, y);
     titleBar.makeGraphic(width, 26, FlxColor.TRANSPARENT, true);
     // args: sprite, x, y, width, height, TopLeft, TopRight, BottomLeft, BottomRight, Color
     FlxSpriteUtil.drawRoundRectComplex(titleBar, 0, 0, width, 26, cornerRadius, cornerRadius, 0, 0, 0xFF243746);
     titleBar.alpha = windowOpacity;
 
-    var debugFont = Paths.font("GoogleSans-SemiBold.ttf");
+    var titleText:FlxText = new FlxText(x + 8, y + 5, width - 16, title, 14);
+    titleText.setFormat(titleFont, 15, 0xFFFFFFFF, FlxTextAlign.LEFT);
 
-    var titleText = new FlxText(x + 8, y + 5, width - 16, title, 14);
-    titleText.setFormat(debugFont, 14, 0xFFFFFFFF, FlxTextAlign.LEFT);
-
-    var content = new FlxText(x + 8, y + 34, width - 16, "", 13);
-    content.setFormat(debugFont, 13, 0xFFFFFFFF, FlxTextAlign.LEFT);
+    var content:FlxText = new FlxText(x + 8, y + 34, width - 16, "", 13);
     content.fieldWidth = width - 16;
     content.wordWrap = true;
     content.autoSize = true;
 
     if (title == "DEBUG CONSOLE")
     {
-      content.color = 0xFF00FF00;
+      content.setFormat(contentFont, 12, 0xFF00FF00, FlxTextAlign.LEFT);
+    }
+    else
+    {
+      content.setFormat(contentFont, 13, 0xFFFFFFFF, FlxTextAlign.LEFT);
     }
 
     background.scrollFactor.set(0, 0);
@@ -190,7 +196,7 @@ class DebugWindow extends Module
   {
     if (value == null) return fallback;
 
-    var result = Std.string(value);
+    var result:String = Std.string(value);
 
     if (result == null || StringTools.trim(result) == "") return fallback;
 
@@ -216,7 +222,7 @@ class DebugWindow extends Module
 
   function attachWindowsToState():Void
   {
-    var state = FlxG.state;
+    var state:Dynamic = FlxG.state;
 
     if (state == null || windowGroup == null) return;
 
@@ -250,21 +256,21 @@ class DebugWindow extends Module
 
     windowGroup = new FlxGroup();
 
-    var viewportWidth = Std.int(FlxG.width);
-    var width = Std.int(Math.min(windowWidth, viewportWidth - 20));
+    var viewportWidth:Int = Std.int(FlxG.width);
+    var statusWidth:Int = Std.int(Math.min(statusWindowWidth, viewportWidth - 20));
 
-    var x = 10;
-    var y = 10;
+    var x:Int = 10;
+    var y:Int = 10;
 
     // create song status window
-    createPanel(x, y, width, windowHeight, "STATUS", windowGroup);
+    createPanel(x, y, statusWidth, windowHeight, "STATUS", windowGroup);
 
-    var logY = y + windowHeight + 8;
-
+    var logY:Int = y + windowHeight + 8;
+    var logWidth:Int = Std.int(Math.min(logWindowWidth, viewportWidth - 20));
     maxWindowHeight = Std.int(Math.max(windowHeight, FlxG.height - logY - 10));
 
     // create debug console window
-    createPanel(x, logY, width, maxWindowHeight, "DEBUG CONSOLE", windowGroup);
+    createPanel(x, logY, logWidth, maxWindowHeight, "DEBUG CONSOLE", windowGroup);
 
     // store reference of status UIs
     statusBackground = cast windowGroup.members[0];
@@ -314,8 +320,8 @@ class DebugWindow extends Module
   {
     if (statusBackground == null || logBackground == null) return;
 
-    var gap = 8;
-    var newY = statusBackground.y + statusBackground.height + gap;
+    var gap:Int = 8;
+    var newY:Int = statusBackground.y + statusBackground.height + gap;
 
     // Update Debug Console background.
     logBackground.y = newY;
@@ -343,8 +349,8 @@ class DebugWindow extends Module
           statusText.text = getStatus();
           statusText.updateHitbox();
 
-          var requiredHeight = statusText.height + 42;
-          var targetHeight = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+          var requiredHeight:Int = statusText.height + 42;
+          var targetHeight:Int = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
 
           statusBackground.scale.y = targetHeight / statusBackground.frameHeight;
           statusBackground.updateHitbox();
@@ -357,12 +363,12 @@ class DebugWindow extends Module
           if (logText == null || logBackground == null) return;
           if (logText.graphic == null || logBackground.graphic == null) return;
 
-          var textContent = messages.join("\n");
+          var textContent:String = messages.join("\n");
           logText.text = (textContent == "") ? "[Debug Console] Waiting for log update" : textContent;
           logText.updateHitbox();
 
-          var requiredHeight = logText.height + 42;
-          var targetHeight = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+          var requiredHeight:Int = logText.height + 42;
+          var targetHeight:Int = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
 
           // update the debug window background's rounded corners
           var width:Int = Std.int(logBackground.frameWidth);
@@ -386,12 +392,12 @@ class DebugWindow extends Module
         "Currently not in PlayState";
     }
 
-    var stageName:Dynamic = null;
-    var difficulty:Dynamic = null;
-    var songName:Dynamic = null;
-    var stagePlayer:Dynamic = null;
-    var stageOpponent:Dynamic = null;
-    var playerVocals:Dynamic = null;
+    var stageName:String = null;
+    var difficulty:String = null;
+    var songName:String = null;
+    var stagePlayer:String = null;
+    var stageOpponent:String = null;
+    var playerVocals:Array<String> = null;
 
     if (playState.currentSong != null)
     {
@@ -429,6 +435,10 @@ class DebugWindow extends Module
   {
     super.onCreate(event);
 
+    // initialize fonts
+    titleFont = Paths.font("GoogleSansCode-Bold.ttf");
+    contentFont = Paths.font("GoogleSansCode-Medium.ttf");
+
     // load values from option page
     loadOptionValues();
 
@@ -450,7 +460,7 @@ class DebugWindow extends Module
 
     updateText(STATUS);
 
-    var playState = PlayState.instance;
+    var playState:PlayState = PlayState.instance;
 
     if (playState != null && playState.currentChart != null)
     {

@@ -33,7 +33,7 @@ To see your mod in action head over to "Run and Debug" section of your IDE, whic
 ```haxe
 public function log(message:String):Void
 ```
-`log()` will display the log to DEBUG CONSOLE (can only keep 10 recent logs).
+`log()` will display the log to DEBUG CONSOLE (can only keep 8 recent logs).
 
 ```haxe
 public function clearLogs():Void
