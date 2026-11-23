@@ -19,7 +19,9 @@
       "type": "funkin-run-game",
       "request": "launch",
       "name": "Just run FNF",
-      "preLaunchTask": ""
+      "isMobile": true,
+      "preLaunchTask": "npm: dev",
+      "execName": "me.funkin.fnf"
     }
   ]
 }

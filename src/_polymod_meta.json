@@ -1,5 +1,6 @@
 {
   "title": "DebugWindow",
+  "id": "debugwindow",
   "description": "Debug Window for FNF Mobile V-Slice",
   "contributors": [
     {
@@ -9,5 +10,6 @@
     }
   ],
   "api_version": "0.8.6",
-  "mod_version": "1.1.1"
+  "mod_version": "1.2.1",
+  "license": "Apache-2.0"
 }

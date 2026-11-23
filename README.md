@@ -27,8 +27,30 @@ To see your mod in action head over to "Run and Debug" section of your IDE, whic
 - You can show or hide the Module, change opacity, and status refresh interval at the Preferences page.
 
 ## Using as a debugging tool
-- If you want to use this for modding, you can remove the default `log()` in `onCountdownStart()` at `DebugWindow.hxc`.
-- The public functions of this Module are `log()` and `clearLogs()`.
+- If you want to use this for modding, you can disable/enable default logs by using `disableDefaultLogs()` or `enableDefaultLogs()`.
+- The public functions of this Module are `disableDefaultLogs()`, `enableDefaultLogs()`, `log()` and `clearLogs()`.
+
+```json
+{
+  "title": "title Name",
+  "id": "id",
+  "description": "description",
+  "contributors": [
+    {
+      "name": "name",
+      "role": "role",
+      "url": "url"
+    }
+  ],
+  "dependencies": {
+    "debugwindow": "version (ex. 1.2.1)"
+  },
+  "api_version": "0.8.6",
+  "mod_version": "1.0.0",
+  "license": "Apache-2.0"
+}
+```
+- In your `_polymod_meta.json` file, add `debugwindow` and the `latest version` under the `dependencies`.
 
 ```haxe
 public function log(message:String):Void
@@ -39,6 +61,12 @@ public function log(message:String):Void
 public function clearLogs():Void
 ```
 `clearLogs()` will clear all the logs to `LOG HISTORY`.
+
+```haxe
+public function enableDefaultLogs():Void
+public function disableDefaultLogs():Void
+```
+`disableDefaultLogs()` or `enableDefaultLogs()` will disable/enable default logs.
 
 - To get the Module, create a variable name, then initialize it inside `onSongLoaded()` or `onCountdownStart()` so that you can use it outside.
 

@@ -46,11 +46,12 @@ class DebugWindow extends Module
   var logText:TextField;
 
   // corner radius
-  var cornerRadius:Float = 16;
+  var cornerRadius:Float = 18;
 
-  // FIFO console
+  // FIFO log
   var messages:Array<String> = [];
   var maxMessages:Int = 10;
+  var isDefaultLogsDisabled:Bool = false;
 
   var windowsCreated:Bool = false;
 
@@ -59,7 +60,7 @@ class DebugWindow extends Module
   var fpsElapsed:Float = 0;
   var fpsFrameCount:Int = 0;
   var currentFPS:Int = 0;
-  var gcMem:String = 0;
+  var gcMem:String = "0 MB / 0 MB";
   var peakMemBytes:Float = 0;
 
   // values from option page
@@ -78,12 +79,12 @@ class DebugWindow extends Module
     super("DebugWindow");
   }
 
-  // setter / preview functions from option page section
-  public function updateWindowVisibility():Void
+  // setter functions for option page section
+  public function setWindowVisibility(value:Bool):Void
   {
     try
     {
-      isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+      isWindowVisible = value;
     }
     catch (_:Dynamic)
     {
@@ -93,11 +94,11 @@ class DebugWindow extends Module
     applyVisibility();
   }
 
-  public function updateWindowOpacity():Void
+  public function setWindowOpacity(value:Float):Void
   {
     try
     {
-      windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
+      windowOpacity = value;
     }
     catch (_:Dynamic)
     {
@@ -113,11 +114,11 @@ class DebugWindow extends Module
     if (logTitleBar != null) logTitleBar.alpha = windowOpacity;
   }
 
-  public function updateWindowRefreshInterval():Void
+  public function setWindowRefreshInterval(value:Float):Void
   {
     try
     {
-      windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+      windowRefreshInterval = value;
     }
     catch (_:Dynamic)
     {
@@ -266,20 +267,10 @@ class DebugWindow extends Module
 
   function drawTitleBarShape(bar:Shape, width:Float):Void
   {
-    var r:Float = cornerRadius;
-    var h:Float = titleBarHeight;
-    var halfR:Float = Math.min(r, h * 0.5);
-
     bar.graphics.clear();
     bar.graphics.beginFill(0x243746, 1);
-    // Top-left and top-right rounded corners; square bottom corners
-    bar.graphics.drawRoundRect(0, 0, width, h, r, r);
-    if (h > halfR)
-    {
-      bar.graphics.drawRect(0, halfR, width, h - halfR);
-    }
+    bar.graphics.drawRoundRect(0, 0, width, titleBarHeight, cornerRadius, cornerRadius);
     bar.graphics.endFill();
-    bar.alpha = windowOpacity;
   }
 
   function drawWindowBackground(bg:Shape, width:Float, height:Float):Void
@@ -288,7 +279,6 @@ class DebugWindow extends Module
     bg.graphics.beginFill(0x101820, 1);
     bg.graphics.drawRoundRect(0, 0, width, height, cornerRadius, cornerRadius);
     bg.graphics.endFill();
-    bg.alpha = windowOpacity;
   }
 
   function createPanel(x:Float, y:Float, width:Int, height:Int, title:String, isConsole:Bool):
@@ -362,8 +352,8 @@ class DebugWindow extends Module
     var viewportHeight:Int = Std.int((FlxG.stage != null && FlxG.stage.stageHeight > 0) ? FlxG.stage.stageHeight : FlxG.height);
 
     var statusWidth:Int = Std.int(Math.min(statusWindowWidth, Math.max(120, viewportWidth - 20)));
-    var x:Float = 10;
-    var y:Float = 10;
+    var x:Float = 25;
+    var y:Float = 25;
 
     var statusPanel:Dynamic = createPanel(x, y, statusWidth, windowHeight, "STATUS", false);
     statusWindow = statusPanel.container;
@@ -514,8 +504,9 @@ class DebugWindow extends Module
     var stageName:String = null;
     var difficulty:String = null;
     var songName:String = null;
-    var stagePlayer:String = null;
-    var stageOpponent:String = null;
+    var boyfriend:String = null;
+    var dad:String = null;
+    var girlfriend:String = null;
     var playerVocals:Array<String> = null;
 
     if (playState.currentSong != null)
@@ -533,11 +524,11 @@ class DebugWindow extends Module
     if (playState.currentStage != null)
     {
       var currentStage = playState.currentStage;
-
-      if (currentStage.getBoyfriend() != null) stagePlayer = currentStage.getBoyfriend().characterId;
-      if (currentStage.getDad() != null) stageOpponent = currentStage.getDad().characterId;
-
       stageName = currentStage.id;
+
+      if (currentStage.getBoyfriend() != null) boyfriend = currentStage.getBoyfriend().characterId;
+      if (currentStage.getDad() != null) dad = currentStage.getDad().characterId;
+      if (currentStage.getGirlfriend() != null) girlfriend = currentStage.getGirlfriend().characterId;
     }
 
     return 'FPS: ${currentFPS}\n'
@@ -545,8 +536,9 @@ class DebugWindow extends Module
       + 'Stage: ${safe(stageName)}\n'
       + 'Difficulty: ${safe(difficulty)}\n'
       + 'Song: ${safe(songName)}\n'
-      + 'Player: ${safe(stagePlayer)}\n'
-      + 'Opponent: ${safe(stageOpponent)}\n'
+      + 'Boyfriend: ${safe(boyfriend)}\n'
+      + 'Dad: ${safe(dad)}\n'
+      + 'Girlfriend: ${safe(girlfriend)}\n'
       + 'Player Vocals: ${safe(playerVocals)}';
   }
 
@@ -580,14 +572,17 @@ class DebugWindow extends Module
   {
     super.onCountdownStart(event);
 
-    var playState:PlayState = PlayState.instance;
-
-    if (playState != null && playState.currentChart != null)
+    if (!isDefaultLogsDisabled)
     {
-      var currentChart = playState.currentChart;
-      var voicePaths = currentChart.buildPlayerVoiceList();
+      var playState:PlayState = PlayState.instance;
 
-      log("[Player Voice Paths] " + voicePaths.join(", "));
+      if (playState != null && playState.currentChart != null)
+      {
+        var currentChart = playState.currentChart;
+        var voicePaths = currentChart.buildPlayerVoiceList();
+
+        log("[Player Voice Paths] " + voicePaths.join(", "));
+      }
     }
   }
 
@@ -637,6 +632,16 @@ class DebugWindow extends Module
       messages.shift();
 
     updateText(LOG);
+  }
+
+  public function enableDefaultLogs():Void
+  {
+    isDefaultLogsDisabled = false;
+  }
+
+  public function disableDefaultLogs():Void
+  {
+    isDefaultLogsDisabled = true;
   }
 
   public function clearLogs():Void

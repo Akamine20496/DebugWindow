@@ -43,14 +43,14 @@ class DebugWindowOption extends Module
           Save.instance.modOptions.set("debugWindowVisible", value);
           Save.instance.flush();
 
-          debugWindowModule?.updateWindowVisibility();
+          debugWindowModule.setWindowVisibility(value);
         }, Save.instance.modOptions.get("debugWindowVisible"));
         // Opacity Option
         preferencesPage.createPrefItemNumber('Window Opacity', "Set the opacity for Debug Window.", function(value:Float):Void {
           Save.instance.modOptions.set("debugWindowOpacity", value);
           Save.instance.flush();
 
-          debugWindowModule?.updateWindowOpacity();
+          debugWindowModule.setWindowOpacity(value);
         }, function(value:Float):String {
           return Std.string(Math.round(value * 100)) + "%";
         }, Save.instance.modOptions.get("debugWindowOpacity"), 0.0, // min
@@ -64,7 +64,7 @@ class DebugWindowOption extends Module
             Save.instance.modOptions.set("debugWindowRefreshInterval", value);
             Save.instance.flush();
 
-            debugWindowModule?.updateWindowRefreshInterval();
+            debugWindowModule.setWindowRefreshInterval(value);
         }, function(value:Float):String {
             return Std.string(value) + "ms";
         }, Save.instance.modOptions.get("debugWindowRefreshInterval"), 100.0, // min
