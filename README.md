@@ -19,9 +19,9 @@ To see your mod in action head over to "Run and Debug" section of your IDE, whic
 - This Module is for v-slice fnf (idk about the desktop).
 
 ## What's gets displayed
-- The Module shows two windows "STATUS" and "DEBUG CONSOLE"
-- STATUS Window shows the FPS, GC MEM, Stage Name, Difficulty, Song Name, Player (Boyfriend), Opponent (Dad), and Player Vocals Lists.
-- DEBUG CONSOLE Window shows the all the logs. This Module logs the path of the Player Voice Lists during `onCountdownStart()`.
+- The Module shows two windows `STATUS` and `LOG HISTORY`
+- `STATUS` Window shows the FPS, GC MEM, Stage Name, Difficulty, Song Name, Player (Boyfriend), Opponent (Dad), and Player Vocals Lists.
+- `LOG HISTORY` Window shows the all the logs. This Module logs the path of the Player Voice Lists during `onCountdownStart()`.
 
 ## Customizations
 - You can show or hide the Module, change opacity, and status refresh interval at the Preferences page.
@@ -33,12 +33,12 @@ To see your mod in action head over to "Run and Debug" section of your IDE, whic
 ```haxe
 public function log(message:String):Void
 ```
-`log()` will display the log to DEBUG CONSOLE (can only keep 8 recent logs).
+`log()` will display the log to `LOG HISTORY` (can only keep 10 recent logs).
 
 ```haxe
 public function clearLogs():Void
 ```
-`clearLogs()` will clear all the logs to DEBUG CONSOLE.
+`clearLogs()` will clear all the logs to `LOG HISTORY`.
 
 - To get the Module, create a variable name, then initialize it inside `onSongLoaded()` or `onCountdownStart()` so that you can use it outside.
 

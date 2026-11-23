@@ -9,51 +9,50 @@ import funkin.modding.events.ScriptEvent.StateChangeScriptEvent;
 import funkin.modding.events.UpdateScriptEvent;
 import funkin.modding.module.Module;
 import flixel.FlxG;
-import flixel.FlxSprite;
-import flixel.FlxCamera;
-import flixel.util.FlxColor;
-import flixel.util.FlxSpriteUtil;
-import flixel.group.FlxGroup;
-import flixel.text.FlxText;
-import flixel.text.FlxText.FlxTextAlign;
+import openfl.display.Sprite;
+import openfl.display.Shape;
+import openfl.text.Font;
+import openfl.text.TextField;
+import openfl.text.TextFormat;
+import openfl.utils.Assets;
 import openfl.system.System;
 import StringTools;
-import Reflect;
 
 class DebugWindow extends Module
 {
-  // Flixel Object Group
-  var windowGroup:FlxGroup;
+  // OpenFL window containers
+  var statusWindow:Sprite;
+  var logWindow:Sprite;
 
   // Window dimensions
-  var statusWindowWidth:Int = 300;
-  var logWindowWidth:Int = 340;
+  var statusWindowWidth:Int = 340;
+  var logWindowWidth:Int = 380;
   var windowHeight:Int = 80;
   var maxWindowHeight:Int = 360;
+  var titleBarHeight:Int = 34;
 
-  // Status window
+  // Status window and OpenFL children
   var STATUS(default, null):Int = 0;
-  var statusBackground:FlxSprite;
-  var statusTitleBar:FlxSprite;
-  var statusTitle:FlxText;
-  var statusText:FlxText;
+  var statusBackground:Shape;
+  var statusTitleBar:Shape;
+  var statusTitle:TextField;
+  var statusText:TextField;
 
-  // Console window
+  // Log window and OpenFL children
   var LOG(default, null):Int = 1;
-  var logBackground:FlxSprite;
-  var logTitleBar:FlxSprite;
-  var logTitle:FlxText;
-  var logText:FlxText;
+  var logBackground:Shape;
+  var logTitleBar:Shape;
+  var logTitle:TextField;
+  var logText:TextField;
 
   // corner radius
   var cornerRadius:Float = 16;
 
   // FIFO console
   var messages:Array<String> = [];
-  var maxMessages:Int = 8;
+  var maxMessages:Int = 10;
 
-  var ownerState:Dynamic;
-  var hudCamera:FlxCamera;
+  var windowsCreated:Bool = false;
 
   // fps and ram
   var statusRefreshTimer:Float = 0;
@@ -68,9 +67,11 @@ class DebugWindow extends Module
   var windowOpacity:Float;
   var windowRefreshInterval:Float;
 
-  // fonts
-  var titleFont:String;
-  var contentFont:String;
+  // resolved font names and embed state
+  var titleFontName:String = "_sans";
+  var titleFontEmbedded:Bool = false;
+  var contentFontName:String = "_sans";
+  var contentFontEmbedded:Bool = false;
 
   public function new()
   {
@@ -80,35 +81,164 @@ class DebugWindow extends Module
   // setter / preview functions from option page section
   public function updateWindowVisibility():Void
   {
-    isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
-    if (windowGroup != null) windowGroup.visible = isWindowVisible;
+    try
+    {
+      isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+    }
+    catch (_:Dynamic)
+    {
+      log('[Window Visible Option] Fallback to true.');
+      isWindowVisible = true;
+    }
+    applyVisibility();
   }
 
   public function updateWindowOpacity():Void
   {
-    var rawValue:Float = cast Save.instance.modOptions.get("debugWindowOpacity");
-    windowOpacity = rawValue;
+    try
+    {
+      windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
+    }
+    catch (_:Dynamic)
+    {
+      log('[Window Opacity Option] Fallback to 1.0.');
+      windowOpacity = 1.0;
+    }
 
-    // Update Status Window Opacity (temporary since they'll lose reference upon leaving option)
-    statusBackground.alpha = rawValue;
-    statusTitleBar.alpha = rawValue;
-
-    // Update Debug Console Window Opacity (temporary since they'll lose reference upon leaving option)
-    logBackground.alpha = rawValue;
-    logTitleBar.alpha = rawValue;
+    // update opacity of status window
+    if (statusBackground != null) statusBackground.alpha = windowOpacity;
+    if (statusTitleBar != null) statusTitleBar.alpha = windowOpacity;
+    // update opacity of debug console window
+    if (logBackground != null) logBackground.alpha = windowOpacity;
+    if (logTitleBar != null) logTitleBar.alpha = windowOpacity;
   }
 
   public function updateWindowRefreshInterval():Void
   {
-    windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+    try
+    {
+      windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+    }
+    catch (_:Dynamic)
+    {
+      log('[Window Refresh Interval Option] Fallback to 100.0.');
+      windowRefreshInterval = 100.0;
+    }
   }
 
   // class functions and lifecycle section
   function loadOptionValues():Void
   {
-    isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
-    windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
-    windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+    try
+    {
+      isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+      windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
+      windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
+    }
+    catch (_:Dynamic)
+    {
+      log('[Window Options] Fallback to default values.');
+      isWindowVisible = true;
+      windowOpacity = 1.0;
+      windowRefreshInterval = 100.0;
+    }
+  }
+
+  function loadAndRegisterFont(fontAssetPath:String, fallbackName:String = "_sans"):Dynamic
+  {
+    var candidates:Array<String> = [];
+
+    if (fontAssetPath != null && StringTools.trim(fontAssetPath) != "")
+    {
+      var resolvedFromPaths:String = Paths.font(fontAssetPath);
+
+      if (resolvedFromPaths != null && StringTools.trim(resolvedFromPaths) != "")
+      {
+        candidates.push(resolvedFromPaths);
+      }
+
+      if (!candidates.contains(fontAssetPath))
+      {
+        candidates.push(fontAssetPath);
+      }
+    }
+
+    for (candidate in candidates)
+    {
+      var font:Font = null;
+
+      if (Assets.exists(candidate))
+      {
+        try
+        {
+          font = Assets.getFont(candidate);
+        }
+        catch (_:Dynamic)
+        {
+          font = null;
+        }
+      }
+
+      if (font == null)
+      {
+        try
+        {
+          font = Font.fromFile(candidate);
+        }
+        catch (_:Dynamic)
+        {
+          font = null;
+        }
+      }
+
+      if (font != null)
+      {
+        try
+        {
+          Font.registerFont(font);
+        }
+        catch (_:Dynamic) {}
+
+        if (font.fontName != null && StringTools.trim(font.fontName) != "")
+        {
+          return {
+            fontName: font.fontName,
+            embedded: true
+          };
+        }
+      }
+    }
+
+    return {
+      fontName: fallbackName,
+      embedded: false
+    };
+  }
+
+  function applyVisibility():Void
+  {
+    if (statusWindow != null) statusWindow.visible = isWindowVisible;
+    if (logWindow != null) logWindow.visible = isWindowVisible;
+  }
+
+  function getStatusRefreshInterval():Float
+  {
+    var interval:Float = windowRefreshInterval;
+
+    interval = Math.max(100, Math.min(200, interval));
+
+    return interval / 1000;
+  }
+
+  function safe(value:Dynamic, fallback:String = "NULL"):String
+  {
+    if (value == null) return fallback;
+
+    var result:String = Std.string(value);
+
+    if (result == null || StringTools.trim(result) == "") return fallback;
+
+    return result;
   }
 
   function getMemoryLabel():String
@@ -134,168 +264,181 @@ class DebugWindow extends Module
     return '$roundedMb MB';
   }
 
-  function createHudCamera():Void
+  function drawTitleBarShape(bar:Shape, width:Float):Void
   {
-    if (hudCamera != null && FlxG.cameras.list.contains(hudCamera)) return;
+    var r:Float = cornerRadius;
+    var h:Float = titleBarHeight;
+    var halfR:Float = Math.min(r, h * 0.5);
 
-    hudCamera = new FlxCamera();
-    hudCamera.bgColor = 0x00000000;
-    hudCamera.zoom = 1;
-    hudCamera.followLerp = 0;
-
-    FlxG.cameras.add(hudCamera, false);
-  }
-
-  function createPanel(x:Int, y:Int, width:Int, height:Int, title:String, group:FlxGroup):Void
-  {
-    var background:FlxSprite = new FlxSprite(x, y);
-    background.makeGraphic(width, height, FlxColor.TRANSPARENT, true);
-    FlxSpriteUtil.drawRoundRect(background, 0, 0, width, height, cornerRadius, cornerRadius, 0xEE101820);
-    background.alpha = windowOpacity;
-
-    var titleBar:FlxSprite = new FlxSprite(x, y);
-    titleBar.makeGraphic(width, 26, FlxColor.TRANSPARENT, true);
-    // args: sprite, x, y, width, height, TopLeft, TopRight, BottomLeft, BottomRight, Color
-    FlxSpriteUtil.drawRoundRectComplex(titleBar, 0, 0, width, 26, cornerRadius, cornerRadius, 0, 0, 0xFF243746);
-    titleBar.alpha = windowOpacity;
-
-    var titleText:FlxText = new FlxText(x + 8, y + 5, width - 16, title, 14);
-    titleText.setFormat(titleFont, 15, 0xFFFFFFFF, FlxTextAlign.LEFT);
-
-    var content:FlxText = new FlxText(x + 8, y + 34, width - 16, "", 13);
-    content.fieldWidth = width - 16;
-    content.wordWrap = true;
-    content.autoSize = true;
-
-    if (title == "DEBUG CONSOLE")
+    bar.graphics.clear();
+    bar.graphics.beginFill(0x243746, 1);
+    // Top-left and top-right rounded corners; square bottom corners
+    bar.graphics.drawRoundRect(0, 0, width, h, r, r);
+    if (h > halfR)
     {
-      content.setFormat(contentFont, 12, 0xFF00FF00, FlxTextAlign.LEFT);
+      bar.graphics.drawRect(0, halfR, width, h - halfR);
     }
-    else
+    bar.graphics.endFill();
+    bar.alpha = windowOpacity;
+  }
+
+  function drawWindowBackground(bg:Shape, width:Float, height:Float):Void
+  {
+    bg.graphics.clear();
+    bg.graphics.beginFill(0x101820, 1);
+    bg.graphics.drawRoundRect(0, 0, width, height, cornerRadius, cornerRadius);
+    bg.graphics.endFill();
+    bg.alpha = windowOpacity;
+  }
+
+  function createPanel(x:Float, y:Float, width:Int, height:Int, title:String, isConsole:Bool):
     {
-      content.setFormat(contentFont, 13, 0xFFFFFFFF, FlxTextAlign.LEFT);
+      container:Sprite,
+      background:Shape,
+      titleBar:Shape,
+      titleField:TextField,
+      contentField:TextField
     }
-
-    background.scrollFactor.set(0, 0);
-    titleBar.scrollFactor.set(0, 0);
-    titleText.scrollFactor.set(0, 0);
-    content.scrollFactor.set(0, 0);
-
-    background.cameras = [hudCamera];
-    titleBar.cameras = [hudCamera];
-    titleText.cameras = [hudCamera];
-    content.cameras = [hudCamera];
-
-    group.add(background);
-    group.add(titleBar);
-    group.add(titleText);
-    group.add(content);
-  }
-
-  function safe(value:Dynamic, fallback:String = "NULL"):String
   {
-    if (value == null) return fallback;
+    var container:Sprite = new Sprite();
+    container.x = x;
+    container.y = y;
+    container.mouseEnabled = false;
+    container.mouseChildren = false;
 
-    var result:String = Std.string(value);
+    var background:Shape = new Shape();
+    drawWindowBackground(background, width, height);
+    container.addChild(background);
 
-    if (result == null || StringTools.trim(result) == "") return fallback;
+    var titleBar:Shape = new Shape();
+    drawTitleBarShape(titleBar, width);
+    container.addChild(titleBar);
 
-    return result;
-  }
+    var titleFormat:TextFormat = new TextFormat(titleFontName, 20, 0xFFFFFF, true);
+    var titleField:TextField = new TextField();
+    titleField.embedFonts = titleFontEmbedded;
+    titleField.x = 8;
+    titleField.y = 4;
+    titleField.width = width - 16;
+    titleField.height = titleBarHeight - 4;
+    titleField.selectable = false;
+    titleField.mouseEnabled = false;
+    titleField.text = title;
+    titleField.defaultTextFormat = titleFormat;
+    container.addChild(titleField);
 
-  function getStatusRefreshInterval():Float
-  {
-    var interval:Float = windowRefreshInterval;
+    var textColor:Int = isConsole ? 0x00FF00 : 0xFFFFFF;
+    var contentFormat:TextFormat = new TextFormat(contentFontName, isConsole ? 15 : 16, textColor, false);
+    var contentField:TextField = new TextField();
+    contentField.embedFonts = contentFontEmbedded;
+    contentField.x = 8;
+    contentField.y = titleBarHeight + 8;
+    contentField.width = width - 16;
+    contentField.height = Math.max(20, height - (titleBarHeight + 16));
+    contentField.multiline = true;
+    contentField.wordWrap = true;
+    contentField.selectable = false;
+    contentField.mouseEnabled = false;
+    contentField.text = "";
+    contentField.defaultTextFormat = contentFormat;
+    container.addChild(contentField);
 
-    interval = Math.max(100, Math.min(200, interval));
+    attachToStage(container);
 
-    return interval / 1000;
-  }
-
-  function detachWindowsFromState():Void
-  {
-    if (ownerState == null || windowGroup == null) return;
-
-    ownerState.remove(windowGroup, true);
-    ownerState = null;
-  }
-
-  function attachWindowsToState():Void
-  {
-    var state:Dynamic = FlxG.state;
-
-    if (state == null || windowGroup == null) return;
-
-    if (ownerState == state) return;
-
-    if (ownerState != null) detachWindowsFromState();
-
-    ownerState = state;
-    state.add(windowGroup);
-  }
-
-  function ensureWindows():Void
-  {
-    if (FlxG.state == null) return;
-
-    if (windowGroup == null) createWindows();
-    else
-      attachWindowsToState();
-
-    if (windowGroup != null) windowGroup.visible = isWindowVisible;
+    return {
+      container: container,
+      background: background,
+      titleBar: titleBar,
+      titleField: titleField,
+      contentField: contentField
+    };
   }
 
   function createWindows():Void
   {
-    // Prevents duplicate creation if already active in the current state
-    if (windowGroup != null || FlxG.state == null) return;
+    if (windowsCreated) return;
 
-    ownerState = FlxG.state;
+    var viewportWidth:Int = Std.int((FlxG.stage != null && FlxG.stage.stageWidth > 0) ? FlxG.stage.stageWidth : FlxG.width);
+    var viewportHeight:Int = Std.int((FlxG.stage != null && FlxG.stage.stageHeight > 0) ? FlxG.stage.stageHeight : FlxG.height);
 
-    createHudCamera();
+    var statusWidth:Int = Std.int(Math.min(statusWindowWidth, Math.max(120, viewportWidth - 20)));
+    var x:Float = 10;
+    var y:Float = 10;
 
-    windowGroup = new FlxGroup();
+    var statusPanel:Dynamic = createPanel(x, y, statusWidth, windowHeight, "STATUS", false);
+    statusWindow = statusPanel.container;
+    statusBackground = statusPanel.background;
+    statusTitleBar = statusPanel.titleBar;
+    statusTitle = statusPanel.titleField;
+    statusText = statusPanel.contentField;
 
-    var viewportWidth:Int = Std.int(FlxG.width);
-    var statusWidth:Int = Std.int(Math.min(statusWindowWidth, viewportWidth - 20));
+    var logY:Float = y + windowHeight + 8;
+    var logWidth:Int = Std.int(Math.min(logWindowWidth, Math.max(120, viewportWidth - 20)));
+    maxWindowHeight = Std.int(Math.max(windowHeight, viewportHeight - logY - 10));
 
-    var x:Int = 10;
-    var y:Int = 10;
+    var logPanel:Dynamic = createPanel(x, logY, logWidth, maxWindowHeight, "LOG HISTORY", true);
+    logWindow = logPanel.container;
+    logBackground = logPanel.background;
+    logTitleBar = logPanel.titleBar;
+    logTitle = logPanel.titleField;
+    logText = logPanel.contentField;
 
-    // create song status window
-    createPanel(x, y, statusWidth, windowHeight, "STATUS", windowGroup);
+    windowsCreated = true;
+    applyVisibility();
+  }
 
-    var logY:Int = y + windowHeight + 8;
-    var logWidth:Int = Std.int(Math.min(logWindowWidth, viewportWidth - 20));
-    maxWindowHeight = Std.int(Math.max(windowHeight, FlxG.height - logY - 10));
+  function ensureWindows():Void
+  {
+    if (!windowsCreated)
+    {
+      createWindows();
+    }
+    else
+    {
+      // Re-attach if stage changed
+      if (statusWindow != null && statusWindow.parent == null) attachToStage(statusWindow);
+      if (logWindow != null && logWindow.parent == null) attachToStage(logWindow);
+    }
 
-    // create debug console window
-    createPanel(x, logY, logWidth, maxWindowHeight, "DEBUG CONSOLE", windowGroup);
+    applyVisibility();
+  }
 
-    // store reference of status UIs
-    statusBackground = cast windowGroup.members[0];
-    statusTitleBar = cast windowGroup.members[1];
-    statusTitle = cast windowGroup.members[2];
-    statusText = cast windowGroup.members[3];
-    // store reference of log UIs
-    logBackground = cast windowGroup.members[4];
-    logTitleBar = cast windowGroup.members[5];
-    logTitle = cast windowGroup.members[6];
-    logText = cast windowGroup.members[7];
+  function attachToStage(container:Sprite):Void
+  {
+    if (container == null) return;
 
-    ownerState.add(windowGroup);
+    if (FlxG.stage != null)
+    {
+      FlxG.stage.addChild(container);
+    }
+    else
+    {
+      FlxG.addChildBelowMouse(container);
+    }
+  }
+
+  function destroySpriteContainer(sprite:Sprite):Void
+  {
+    if (sprite == null) return;
+
+    while (sprite.numChildren > 0)
+    {
+      sprite.removeChildAt(0);
+    }
+
+    if (sprite.parent != null)
+    {
+      sprite.parent.removeChild(sprite);
+    }
   }
 
   function destroyWindows():Void
   {
-    // If ownerState is no longer the active state, Flixel already destroyed its children
-    if (ownerState != null && ownerState == FlxG.state && windowGroup != null)
-    {
-      ownerState.remove(windowGroup, true);
-      windowGroup.destroy();
-    }
+    destroySpriteContainer(statusWindow);
+    destroySpriteContainer(logWindow);
 
-    windowGroup = null;
+    statusWindow = null;
+    logWindow = null;
 
     statusBackground = null;
     statusTitleBar = null;
@@ -307,33 +450,16 @@ class DebugWindow extends Module
     logTitle = null;
     logText = null;
 
-    if (hudCamera != null)
-    {
-      FlxG.cameras.remove(hudCamera, true);
-      hudCamera = null;
-    }
-
-    ownerState = null;
+    windowsCreated = false;
   }
 
   function updateLogPosition():Void
   {
-    if (statusBackground == null || logBackground == null) return;
+    if (statusWindow == null || logWindow == null || statusBackground == null) return;
 
-    var gap:Int = 8;
-    var newY:Int = statusBackground.y + statusBackground.height + gap;
-
-    // Update Debug Console background.
-    logBackground.y = newY;
-
-    // Update title bar.
-    logTitleBar.y = newY;
-
-    // Update title text.
-    logTitle.y = newY + 5;
-
-    // Update console text.
-    logText.y = newY + 34;
+    var gap:Float = 8;
+    var currentStatusHeight:Float = statusBackground.height > 0 ? statusBackground.height : windowHeight;
+    logWindow.y = statusWindow.y + currentStatusHeight + gap;
   }
 
   // Refresh text based on type STATUS or LOG
@@ -343,39 +469,31 @@ class DebugWindow extends Module
     {
       case STATUS:
         {
-          if (statusBackground == null) return;
-          if (statusText.graphic == null || statusBackground.graphic == null) return;
+          if (statusWindow == null || statusText == null || statusBackground == null) return;
 
           statusText.text = getStatus();
-          statusText.updateHitbox();
 
-          var requiredHeight:Int = statusText.height + 42;
-          var targetHeight:Int = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+          var requiredHeight:Int = Math.ceil(statusText.textHeight + titleBarHeight + 18);
+          var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
 
-          statusBackground.scale.y = targetHeight / statusBackground.frameHeight;
-          statusBackground.updateHitbox();
+          statusText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+          drawWindowBackground(statusBackground, statusText.width + 16, targetHeight);
 
-          // Reposition Debug Console whenever Song Status height changes.
+          // Reposition Debug Console whenever Status height changes.
           updateLogPosition();
         }
       case LOG:
         {
-          if (logText == null || logBackground == null) return;
-          if (logText.graphic == null || logBackground.graphic == null) return;
+          if (logWindow == null || logText == null || logBackground == null) return;
 
           var textContent:String = messages.join("\n");
-          logText.text = (textContent == "") ? "[Debug Console] Waiting for log update" : textContent;
-          logText.updateHitbox();
+          logText.text = (textContent == "") ? "[Log] Waiting for log update" : textContent;
 
-          var requiredHeight:Int = logText.height + 42;
-          var targetHeight:Int = Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight));
+          var requiredHeight:Int = Math.ceil(logText.textHeight + titleBarHeight + 18);
+          var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
 
-          // update the debug window background's rounded corners
-          var width:Int = Std.int(logBackground.frameWidth);
-          var height:Int = Std.int(targetHeight);
-
-          logBackground.makeGraphic(width, height, FlxColor.TRANSPARENT, true);
-          FlxSpriteUtil.drawRoundRect(logBackground, 0, 0, width, height, cornerRadius, cornerRadius, 0xEE101820);
+          logText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+          drawWindowBackground(logBackground, logText.width + 16, targetHeight);
         }
     }
   }
@@ -383,13 +501,13 @@ class DebugWindow extends Module
   // show status
   function getStatus():String
   {
-    var playState = PlayState.instance;
+    var playState:PlayState = PlayState.instance;
 
     if (playState == null)
     {
-      return "FPS: " + currentFPS + "\n" +
-        "GC MEM: " + gcMem + "\n\n" +
-        "Currently not in PlayState";
+      return 'FPS: ${currentFPS}\n'
+        + 'GC MEM: ${gcMem}\n\n'
+        + "Currently not in PlayState";
     }
 
     var stageName:String = null;
@@ -421,29 +539,33 @@ class DebugWindow extends Module
       stageName = currentStage.id;
     }
 
-    return "FPS: " + currentFPS + "\n" +
-      "GC MEM: " + gcMem + "\n\n" +
-      "Stage: " + safe(stageName) + "\n" +
-      "Difficulty: " + safe(difficulty) + "\n" +
-      "Song: " + safe(songName) + "\n" +
-      "Player: " + safe(stagePlayer) + "\n" +
-      "Opponent: " + safe(stageOpponent) + "\n" +
-      "Player Vocals: " + safe(playerVocals);
+    return 'FPS: ${currentFPS}\n'
+      + 'GC MEM: ${gcMem}\n\n'
+      + 'Stage: ${safe(stageName)}\n'
+      + 'Difficulty: ${safe(difficulty)}\n'
+      + 'Song: ${safe(songName)}\n'
+      + 'Player: ${safe(stagePlayer)}\n'
+      + 'Opponent: ${safe(stageOpponent)}\n'
+      + 'Player Vocals: ${safe(playerVocals)}';
   }
 
   override function onCreate(event:ScriptEvent):Void
   {
     super.onCreate(event);
 
-    // initialize fonts
-    titleFont = Paths.font("GoogleSansCode-Bold.ttf");
-    contentFont = Paths.font("GoogleSansCode-Medium.ttf");
+    // register fonts from fonts/
+    var titleFontInfo:Dynamic = loadAndRegisterFont("fonts/GoogleSansCode-Bold.ttf");
+    titleFontName = titleFontInfo.fontName;
+    titleFontEmbedded = titleFontInfo.embedded;
+
+    var contentFontInfo:Dynamic = loadAndRegisterFont("fonts/GoogleSansCode-Medium.ttf");
+    contentFontName = contentFontInfo.fontName;
+    contentFontEmbedded = contentFontInfo.embedded;
 
     // load values from option page
     loadOptionValues();
 
     ensureWindows();
-    updateText(STATUS);
     updateText(LOG);
   }
 
@@ -453,12 +575,10 @@ class DebugWindow extends Module
     destroyWindows();
   }
 
-  // Update status when countdown starts.
+  // log voice player paths
   override function onCountdownStart(event:CountdownScriptEvent):Void
   {
     super.onCountdownStart(event);
-
-    updateText(STATUS);
 
     var playState:PlayState = PlayState.instance;
 
@@ -471,6 +591,7 @@ class DebugWindow extends Module
     }
   }
 
+  // status update
   override function onUpdate(event:UpdateScriptEvent):Void
   {
     super.onUpdate(event);
@@ -501,36 +622,13 @@ class DebugWindow extends Module
     updateText(STATUS);
   }
 
-  // Clean status upon song end
-  override function onSongEnd(event:ScriptEvent):Void
-  {
-    super.onSongEnd(event);
-    updateText(STATUS);
-  }
-
-  override function onStateChangeBegin(event:StateChangeScriptEvent):Void
-  {
-    super.onStateChangeBegin(event);
-
-    if (Std.isOfType(FlxG.state, PlayState))
-    {
-      updateText(STATUS);
-    }
-
-    detachWindowsFromState();
-  }
-
   override function onStateChangeEnd(event:StateChangeScriptEvent):Void
   {
     super.onStateChangeEnd(event);
-
-    destroyWindows();
     ensureWindows();
-    updateText(STATUS);
-    updateText(LOG);
   }
 
-  // store text to debug console.
+  // store text to logs.
   public function log(message:String):Void
   {
     messages.push(message);
