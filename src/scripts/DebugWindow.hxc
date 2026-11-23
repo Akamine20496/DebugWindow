@@ -400,6 +400,7 @@ class DebugWindow extends Module
       if (logWindow != null && logWindow.parent == null) attachToStage(logWindow);
     }
 
+    updateText(LOG);
     applyVisibility();
   }
 
@@ -566,7 +567,6 @@ class DebugWindow extends Module
     loadOptionValues();
 
     ensureWindows();
-    updateText(LOG);
   }
 
   override function onDestroy(event:ScriptEvent):Void

@@ -122,6 +122,6 @@ export async function buildZip() {
 
   await createZip(files, zipPath);
 
-  console.log("Bundled successfully!");
+  console.log("Zip file created successfully!");
   console.log(`ZIP: ${zipPath}`);
 }
