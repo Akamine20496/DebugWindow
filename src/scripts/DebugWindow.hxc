@@ -298,10 +298,12 @@ class DebugWindow extends Module
 
     var background:Shape = new Shape();
     drawWindowBackground(background, width, height);
+    background.alpha = windowOpacity;
     container.addChild(background);
 
     var titleBar:Shape = new Shape();
     drawTitleBarShape(titleBar, width);
+    titleBar.alpha = windowOpacity;
     container.addChild(titleBar);
 
     var titleFormat:TextFormat = new TextFormat(titleFontName, 20, 0xFFFFFF, true);
