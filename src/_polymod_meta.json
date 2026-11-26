@@ -1,7 +1,7 @@
 {
   "title": "DebugWindow",
   "id": "debugwindow",
-  "description": "Debug Window for FNF Mobile V-Slice",
+  "description": "A simple debugging tool for FNF Mobile V-Slice",
   "contributors": [
     {
       "name": "Akamine20496",
@@ -10,6 +10,6 @@
     }
   ],
   "api_version": "0.8.6",
-  "mod_version": "1.2.2",
+  "mod_version": "2.0.0",
   "license": "Apache-2.0"
 }

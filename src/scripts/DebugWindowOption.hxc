@@ -18,13 +18,14 @@ class DebugWindowOption extends Module
   {
     super.onCreate(event);
 
-    if (Save.instance.modOptions.get("debugWindowVisible") == null
-      && Save.instance.modOptions.get("debugWindowOpacity") == null
-      && Save.instance.modOptions.get("debugWindowRefreshInterval") == null)
+    var opts = Save.instance.modOptions;
+
+    if (opts.get("debugWindowMode") == null
+        && opts.get("debugWindowOpacity") == null)
     {
-      Save.instance.modOptions.set("debugWindowVisible", true);
-      Save.instance.modOptions.set("debugWindowOpacity", 1.0);
-      Save.instance.modOptions.set("debugWindowRefreshInterval", 100);
+      opts.set("debugWindowMode", 'full');
+      opts.set("debugWindowOpacity", 0.4);
+
       Save.instance.flush();
     }
   }
@@ -38,39 +39,43 @@ class DebugWindowOption extends Module
 
       if (preferencesPage != null)
       {
-        // Visibility Option
-        preferencesPage.createPrefItemCheckbox('Debug Window', "When enabled, Debug Window is visible.", function(value:Bool):Void {
-          Save.instance.modOptions.set("debugWindowVisible", value);
-          Save.instance.flush();
-
-          debugWindowModule.setWindowVisibility(value);
-        }, Save.instance.modOptions.get("debugWindowVisible"));
-        // Opacity Option
-        preferencesPage.createPrefItemNumber('Window Opacity', "Set the opacity for Debug Window.", function(value:Float):Void {
-          Save.instance.modOptions.set("debugWindowOpacity", value);
-          Save.instance.flush();
-
-          debugWindowModule.setWindowOpacity(value);
-        }, function(value:Float):String {
-          return Std.string(Math.round(value * 100)) + "%";
-        }, Save.instance.modOptions.get("debugWindowOpacity"), 0.0, // min
-          1.0, // max
-          0.1, // step
-          1 // decimal places
-        );
-        // Status Refresh Interval Option
-        preferencesPage.createPrefItemNumber('Status Refresh Interval',
-          "Set the refresh interval for Status in Debug Window.\n(Affects FPS and GC MEM status)", function(value:Float):Void {
-            Save.instance.modOptions.set("debugWindowRefreshInterval", value);
+        // Window Mode Option
+        preferencesPage.createPrefItemEnum(
+          'Debug Window',
+          "Choose how much info the Debug Window shows.",
+          [
+            "None" => "none",
+            "Basic" => "basic",
+            "Full" => "full"
+          ],
+          function(key:String, value:String):Void
+          {
+            Save.instance.modOptions.set("debugWindowMode", value);
             Save.instance.flush();
 
-            debugWindowModule.setWindowRefreshInterval(value);
-        }, function(value:Float):String {
-            return Std.string(value) + "ms";
-        }, Save.instance.modOptions.get("debugWindowRefreshInterval"), 100.0, // min
-          200.0, // max
-          10.0 // step
-        );
+            debugWindowModule.setWindowMode(value);
+          },
+          Save.instance.modOptions.get("debugWindowMode"));
+
+          // Opacity Option
+          preferencesPage.createPrefItemNumber(
+            'Window Opacity',
+            "Set the opacity for Debug Window.",
+            function(value:Float):Void {
+              Save.instance.modOptions.set("debugWindowOpacity", value);
+              Save.instance.flush();
+
+              debugWindowModule.setWindowOpacity(value);
+            },
+            function(value:Float):String {
+              return Std.string(Math.round(value * 100)) + "%";
+            },
+            Save.instance.modOptions.get("debugWindowOpacity"),
+            0.0, // min
+            1.0, // max
+            0.1, // step
+            1 // decimal places
+          );
       }
     }
   }

@@ -1,35 +1,16 @@
-# Welcome to Funkin IDE's template project
+# DebugWindow
 
-[Kade's V-Slice docs](https://thekade.net/funkin-cookbook/)
-
-This is a simple template to get you started with V-Slice modding.
-Most (if not all) information related to the mod structure is documented across various chapters in the official documentation.
-
-
-## Getting your funkin mod to **funk**
-
-To see your mod in action head over to "Run and Debug" section of your IDE, which has all the necessary tasks to let you playtest your mod:
-
-- `Just run FNF` Starts up your engine (stopping this task will also stop the game. Useful in some cases).
-- `Copy & Run FNF mod` Copies your mod to the configured FNF instance (debugger will ask for it if it was not set) and launches it.
-- `Copy & Run Mobile FNF` Same as `Copy & Run FNF mod` but targets connected Android phone (via adb).
-
-# About DebugWindow Mod
-
-- This Module is for v-slice fnf (idk about the desktop).
+- A simple debugging tool for users or modders. This mod is for v-slice fnf mobile.
 
 ## What's gets displayed
-- The Module shows two windows `STATUS` and `LOG HISTORY`
-- `STATUS` Window shows the FPS, GC MEM, Stage Name, Difficulty, Song Name, Player (Boyfriend), Opponent (Dad), and Player Vocals Lists.
-- `LOG HISTORY` Window shows the all the logs. This Module logs the path of the Player Voice Lists during `onCountdownStart()`.
+- `STATUS` Window shows the FPS, 1% Low FPS, GC MEM, Song (name + position / length), Stage Name, Difficulty, Player (Boyfriend), Girlfriend, and Opponent (Dad).
+- `LOG HISTORY` Window shows the all the logs. This Module logs the path of the Player and Opponent Voice Lists during `onCountdownStart()`.
 
 ## Customizations
-- You can show or hide the Module, change opacity, and status refresh interval at the Preferences page.
+Choose what window mode (Basic or Full) and change opacity at the Preferences page.
 
 ## Using as a debugging tool
-- If you want to use this for modding, you can disable/enable default logs by using `disableDefaultLogs()` or `enableDefaultLogs()`.
-- The public functions of this Module are `disableDefaultLogs()`, `enableDefaultLogs()`, `log()` and `clearLogs()`.
-
+In your `_polymod_meta.json` file, add `debugwindow` and the `version` under the `dependencies`.
 ```json
 {
   "title": "title Name",
@@ -50,26 +31,24 @@ To see your mod in action head over to "Run and Debug" section of your IDE, whic
   "license": "Apache-2.0"
 }
 ```
-- In your `_polymod_meta.json` file, add `debugwindow` and the `latest version` under the `dependencies`.
 
+`log()` will display the log to `LOG HISTORY` (can only keep 10 recent logs).
 ```haxe
 public function log(message:String):Void
 ```
-`log()` will display the log to `LOG HISTORY` (can only keep 10 recent logs).
 
+`clearLogs()` will clear all the logs to `LOG HISTORY`.
 ```haxe
 public function clearLogs():Void
 ```
-`clearLogs()` will clear all the logs to `LOG HISTORY`.
 
+`disableDefaultLogs()` or `enableDefaultLogs()` will disable/enable default logs.
 ```haxe
 public function enableDefaultLogs():Void
 public function disableDefaultLogs():Void
 ```
-`disableDefaultLogs()` or `enableDefaultLogs()` will disable/enable default logs.
 
-- To get the Module, create a variable name, then initialize it inside `onSongLoaded()` or `onCountdownStart()` so that you can use it outside.
-
+To get the Module, create a variable name, then initialize it inside `onSongLoaded()` or `onCountdownStart()` so that you can use it outside.
 ```haxe
 // declare variable
 var variableName:Null<DebugWindow>;

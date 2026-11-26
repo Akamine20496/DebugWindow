@@ -1,5 +1,6 @@
 package funkin.play;
 
+import funkin.Conductor;
 import funkin.Paths;
 import funkin.play.PlayState;
 import funkin.save.Save;
@@ -24,12 +25,15 @@ class DebugWindow extends Module
   var statusWindow:Sprite;
   var logWindow:Sprite;
 
-  // Window dimensions
+  var windowsCreated:Bool = false;
+
+  // Window properties
   var statusWindowWidth:Int = 340;
   var logWindowWidth:Int = 380;
   var windowHeight:Int = 80;
   var maxWindowHeight:Int = 360;
   var titleBarHeight:Int = 34;
+  var cornerRadius:Float = 18;
 
   // Status window and OpenFL children
   var STATUS(default, null):Int = 0;
@@ -45,28 +49,29 @@ class DebugWindow extends Module
   var logTitle:TextField;
   var logText:TextField;
 
-  // corner radius
-  var cornerRadius:Float = 18;
-
   // FIFO log
   var messages:Array<String> = [];
   var maxMessages:Int = 10;
   var isDefaultLogsDisabled:Bool = false;
 
-  var windowsCreated:Bool = false;
-
-  // fps and ram
+  // Performance Tracking
   var statusRefreshTimer:Float = 0;
+  var refreshInterval:Float = 1; // 1s
   var fpsElapsed:Float = 0;
   var fpsFrameCount:Int = 0;
   var currentFPS:Int = 0;
+  var frameMs:Float = 0;
   var gcMem:String = "0 MB / 0 MB";
   var peakMemBytes:Float = 0;
+  // 1% low fps
+  var frameTimes:Array<Float> = [];
+  var maxSamples:Int = 300;
+  var windowSeconds:Int = 10;
+  var onePercentLowFPS:Int = 0;
 
   // values from option page
-  var isWindowVisible:Bool;
+  var windowMode:String;
   var windowOpacity:Float;
-  var windowRefreshInterval:Float;
 
   // resolved font names and embed state
   var titleFontName:String = "_sans";
@@ -80,17 +85,18 @@ class DebugWindow extends Module
   }
 
   // setter functions for option page section
-  public function setWindowVisibility(value:Bool):Void
+  public function setWindowMode(value:String):Void
   {
     try
     {
-      isWindowVisible = value;
+      windowMode = value;
     }
     catch (_:Dynamic)
     {
-      log('[Window Visible Option] Fallback to true.');
-      isWindowVisible = true;
+      log('[Window Mode Option] Fallback to full.');
+      windowMode = 'full';
     }
+
     applyVisibility();
   }
 
@@ -102,8 +108,8 @@ class DebugWindow extends Module
     }
     catch (_:Dynamic)
     {
-      log('[Window Opacity Option] Fallback to 1.0.');
-      windowOpacity = 1.0;
+      log('[Window Opacity Option] Fallback to 40%.');
+      windowOpacity = 0.4;
     }
 
     // update opacity of status window
@@ -114,34 +120,19 @@ class DebugWindow extends Module
     if (logTitleBar != null) logTitleBar.alpha = windowOpacity;
   }
 
-  public function setWindowRefreshInterval(value:Float):Void
-  {
-    try
-    {
-      windowRefreshInterval = value;
-    }
-    catch (_:Dynamic)
-    {
-      log('[Window Refresh Interval Option] Fallback to 100.0.');
-      windowRefreshInterval = 100.0;
-    }
-  }
-
   // class functions and lifecycle section
   function loadOptionValues():Void
   {
     try
     {
-      isWindowVisible = cast Save.instance.modOptions.get("debugWindowVisible");
+      windowMode = cast Save.instance.modOptions.get("debugWindowMode");
       windowOpacity = cast Save.instance.modOptions.get("debugWindowOpacity");
-      windowRefreshInterval = cast Save.instance.modOptions.get("debugWindowRefreshInterval");
     }
     catch (_:Dynamic)
     {
       log('[Window Options] Fallback to default values.');
-      isWindowVisible = true;
-      windowOpacity = 1.0;
-      windowRefreshInterval = 100.0;
+      windowMode = 'full';
+      windowOpacity = 0.4;
     }
   }
 
@@ -218,17 +209,26 @@ class DebugWindow extends Module
 
   function applyVisibility():Void
   {
-    if (statusWindow != null) statusWindow.visible = isWindowVisible;
-    if (logWindow != null) logWindow.visible = isWindowVisible;
-  }
+    if (statusWindow == null && logWindow == null) return;
 
-  function getStatusRefreshInterval():Float
-  {
-    var interval:Float = windowRefreshInterval;
-
-    interval = Math.max(100, Math.min(200, interval));
-
-    return interval / 1000;
+    switch (windowMode)
+    {
+      case 'none':
+      {
+        statusWindow.visible = false;
+        logWindow.visible = false;
+      }
+      case 'basic':
+      {
+        statusWindow.visible = true;
+        logWindow.visible = false;
+      }
+      case 'full':
+      {
+        statusWindow.visible = true;
+        logWindow.visible = true;
+      }
+    }
   }
 
   function safe(value:Dynamic, fallback:String = "NULL"):String
@@ -263,6 +263,64 @@ class DebugWindow extends Module
 
     var roundedMb:Float = Math.round(mb * 100) / 100;
     return '$roundedMb MB';
+  }
+
+  // Quickselect to sort the frame times
+  function selectKthLargest(arr:Array<Float>, k:Int):Void
+  {
+    var left:Int = 0;
+    var right:Int = arr.length - 1;
+
+    while (left < right)
+    {
+      var pivot:Float = arr[left + Std.int((right - left) / 2)];
+      var i:Int = left;
+      var j:Int = right;
+
+      // Partition so larger frame times move toward the front.
+      while (i <= j)
+      {
+        while (arr[i] > pivot) i++;
+        while (arr[j] < pivot) j--;
+
+        if (i <= j)
+        {
+          var temp:Float = arr[i];
+          arr[i] = arr[j];
+          arr[j] = temp;
+
+          i++;
+          j--;
+        }
+      }
+
+      if (k <= j)
+        right = j;
+      else
+        left = i;
+    }
+  }
+
+  function calculateOnePercentLow():Int
+  {
+    var count:Int = frameTimes.length;
+
+    if (count == 0) return 0;
+
+    var lowCount:Int = Std.int(Math.max(1, Math.ceil(count * 0.01 - 0.000001)));
+
+    // Arrange the slowest lowCount frame times at the front.
+    selectKthLargest(frameTimes, lowCount - 1);
+
+    var lowSum:Float = 0.0;
+    for (i in 0...lowCount) lowSum += frameTimes[i];
+
+    var avgLowDelta:Float = lowSum / lowCount;
+
+    if (avgLowDelta <= 0) return 0;
+
+    // elapsed is in seconds, so convert seconds/frame to FPS.
+    return Math.round(1.0 / avgLowDelta);
   }
 
   function drawTitleBarShape(bar:Shape, width:Float):Void
@@ -320,7 +378,7 @@ class DebugWindow extends Module
     container.addChild(titleField);
 
     var textColor:Int = isConsole ? 0x00FF00 : 0xFFFFFF;
-    var contentFormat:TextFormat = new TextFormat(contentFontName, isConsole ? 15 : 16, textColor, false);
+    var contentFormat:TextFormat = new TextFormat(contentFontName, isConsole ? 15 : 18, textColor, false);
     var contentField:TextField = new TextField();
     contentField.embedFonts = contentFontEmbedded;
     contentField.x = 8;
@@ -353,9 +411,9 @@ class DebugWindow extends Module
     var viewportWidth:Int = Std.int((FlxG.stage != null && FlxG.stage.stageWidth > 0) ? FlxG.stage.stageWidth : FlxG.width);
     var viewportHeight:Int = Std.int((FlxG.stage != null && FlxG.stage.stageHeight > 0) ? FlxG.stage.stageHeight : FlxG.height);
 
+    var x:Float = 98;
+    var y:Float = 10;
     var statusWidth:Int = Std.int(Math.min(statusWindowWidth, Math.max(120, viewportWidth - 20)));
-    var x:Float = 25;
-    var y:Float = 25;
 
     var statusPanel:Dynamic = createPanel(x, y, statusWidth, windowHeight, "STATUS", false);
     statusWindow = statusPanel.container;
@@ -376,7 +434,6 @@ class DebugWindow extends Module
     logText = logPanel.contentField;
 
     windowsCreated = true;
-    applyVisibility();
   }
 
   function ensureWindows():Void
@@ -461,66 +518,93 @@ class DebugWindow extends Module
     switch (type)
     {
       case STATUS:
-        {
-          if (statusWindow == null || statusText == null || statusBackground == null) return;
+      {
+        if (statusWindow == null || statusText == null || statusBackground == null) return;
 
-          statusText.text = getStatus();
+        statusText.text = getStatus();
 
-          var requiredHeight:Int = Math.ceil(statusText.textHeight + titleBarHeight + 18);
-          var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
+        var requiredHeight:Int = Math.ceil(statusText.textHeight + titleBarHeight + 18);
+        var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
 
-          statusText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
-          drawWindowBackground(statusBackground, statusText.width + 16, targetHeight);
+        statusText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+        drawWindowBackground(statusBackground, statusText.width + 16, targetHeight);
 
-          // Reposition Debug Console whenever Status height changes.
-          updateLogPosition();
-        }
+        // Reposition Debug Console whenever Status height changes.
+        updateLogPosition();
+      }
       case LOG:
-        {
-          if (logWindow == null || logText == null || logBackground == null) return;
+      {
+        if (logWindow == null || logText == null || logBackground == null) return;
 
-          var textContent:String = messages.join("\n");
-          logText.text = (textContent == "") ? "[Log] Waiting for log update" : textContent;
+        var textContent:String = messages.join("\n");
+        logText.text = (textContent == "") ? "[Log] Waiting for log update" : textContent;
 
-          var requiredHeight:Int = Math.ceil(logText.textHeight + titleBarHeight + 18);
-          var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
+        // process if only visible
+        if (!logWindow.visible) return;
 
-          logText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
-          drawWindowBackground(logBackground, logText.width + 16, targetHeight);
-        }
+        var requiredHeight:Int = Math.ceil(logText.textHeight + titleBarHeight + 18);
+        var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
+
+        logText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+        drawWindowBackground(logBackground, logText.width + 16, targetHeight);
+      }
     }
+  }
+
+  // Formats milliseconds as m:ss (e.g. 125000 -> "2:05").
+  function formatDuration(ms:Float):String
+  {
+    var totalSeconds:Int = Math.round(ms / 1000);
+    var minutes:Int = Std.int(totalSeconds / 60);
+    var seconds:Int = totalSeconds % 60;
+
+    return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
   }
 
   // show status
   function getStatus():String
   {
+    var perfHeader:String = 'FPS: ${currentFPS} (${frameMs}ms)\n'
+      + '1% LOW: ${onePercentLowFPS}\n'
+      + 'GC MEM: ${gcMem}\n\n';
+
+    if (windowMode == 'basic') return perfHeader;
+
     var playState:PlayState = PlayState.instance;
 
     if (playState == null)
     {
-      return 'FPS: ${currentFPS}\n'
-        + 'GC MEM: ${gcMem}\n\n'
-        + "Currently not in PlayState";
+      return perfHeader + "Currently not in PlayState";
     }
 
     var stageName:String = null;
     var difficulty:String = null;
-    var songName:String = null;
+    var song:String = null;
     var boyfriend:String = null;
-    var dad:String = null;
     var girlfriend:String = null;
-    var playerVocals:Array<String> = null;
+    var dad:String = null;
+    var songLengthMs:Float = 0;
+    var songPositionMs:Float = 0;
 
     if (playState.currentSong != null)
     {
       var currentSong = playState.currentSong;
-
-      songName = currentSong.id;
       difficulty = playState.currentDifficulty;
 
-      var songVariation = currentSong.getDifficulty(playState.currentDifficulty, playState.currentVariation);
+      var music = FlxG.sound.music;
+      var conductor = Conductor.instance;
 
-      if (songVariation != null && songVariation.characters != null) playerVocals = songVariation.characters.playerVocals;
+      if (music != null) songLengthMs = music.length;
+      if (conductor != null) songPositionMs = Math.max(0, conductor.songPosition);
+
+      var songLabel:String = currentSong.id;
+
+      if (songLengthMs > 0 && songPositionMs > 0 && songPositionMs < songLengthMs)
+      {
+        songLabel += ' (${formatDuration(songPositionMs)} / ${formatDuration(songLengthMs)})';
+      }
+
+      song = songLabel;
     }
 
     if (playState.currentStage != null)
@@ -533,15 +617,13 @@ class DebugWindow extends Module
       if (currentStage.getGirlfriend() != null) girlfriend = currentStage.getGirlfriend().characterId;
     }
 
-    return 'FPS: ${currentFPS}\n'
-      + 'GC MEM: ${gcMem}\n\n'
-      + 'Stage: ${safe(stageName)}\n'
-      + 'Difficulty: ${safe(difficulty)}\n'
-      + 'Song: ${safe(songName)}\n'
-      + 'Boyfriend: ${safe(boyfriend)}\n'
-      + 'Dad: ${safe(dad)}\n'
-      + 'Girlfriend: ${safe(girlfriend)}\n'
-      + 'Player Vocals: ${safe(playerVocals)}';
+    return perfHeader
+      + 'SONG: ${safe(song)}\n'
+      + 'STAGE: ${safe(stageName)}\n'
+      + 'DIFFICULTY: ${safe(difficulty)}\n'
+      + 'BF: ${safe(boyfriend)}\n'
+      + 'GF: ${safe(girlfriend)}\n'
+      + 'DAD: ${safe(dad)}';
   }
 
   override function onCreate(event:ScriptEvent):Void
@@ -557,9 +639,11 @@ class DebugWindow extends Module
     contentFontName = contentFontInfo.fontName;
     contentFontEmbedded = contentFontInfo.embedded;
 
+    // adjust max samples based on target fps * windowSeconds
+    maxSamples = Std.int(FlxG.drawFramerate * windowSeconds);
+
     // load values from option page
     loadOptionValues();
-
     ensureWindows();
   }
 
@@ -580,10 +664,10 @@ class DebugWindow extends Module
 
       if (playState != null && playState.currentChart != null)
       {
-        var currentChart = playState.currentChart;
-        var voicePaths = currentChart.buildPlayerVoiceList();
+        var allVoicePaths:Array<String> =
+          playState.currentChart.buildPlayerVoiceList().concat(playState.currentChart.buildOpponentVoiceList());
 
-        log("[Player Voice Paths] " + voicePaths.join(", "));
+        log("[Voice Paths] " + allVoicePaths.join(", "));
       }
     }
   }
@@ -593,19 +677,30 @@ class DebugWindow extends Module
   {
     super.onUpdate(event);
 
-    var elapsed:Float = event.elapsed;
+    // dont process if window is not visible.
+    if (windowMode == 'none') return;
+
+    var timeScale:Float = FlxG.timeScale;
+
+    // At timeScale 0, elapsed is always 0 and real frame time can't be recovered.
+    if (timeScale <= 0) return;
+
+    var elapsed:Float = event.elapsed / timeScale;
+
+    frameTimes.push(elapsed);
+    if (frameTimes.length > maxSamples) frameTimes.shift();
 
     // Count frames for the FPS estimate.
     fpsFrameCount++;
     fpsElapsed += elapsed;
     statusRefreshTimer += elapsed;
 
-    var refreshInterval:Float = getStatusRefreshInterval();
-
     if (statusRefreshTimer < refreshInterval) return;
 
     // FPS averaged over the elapsed measurement window.
-    if (fpsElapsed > 0) currentFPS = Math.round(fpsFrameCount / fpsElapsed);
+    currentFPS = Math.round(fpsFrameCount / fpsElapsed);
+    frameMs = Math.round((fpsElapsed / fpsFrameCount) * 10000) / 10;
+    onePercentLowFPS = calculateOnePercentLow();
 
     fpsFrameCount = 0;
     fpsElapsed = 0;
