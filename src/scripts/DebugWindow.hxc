@@ -89,11 +89,16 @@ class DebugWindow extends Module
   {
     try
     {
+      value = value.toLowerCase();
+
+      if (!["none", "basic", "full"].contains(value))
+        throw 'Invalid debug window mode: $value';
+
       windowMode = value;
     }
-    catch (_:Dynamic)
+    catch (e:Dynamic)
     {
-      log('[Window Mode Option] Fallback to full.');
+      log('[Window Mode Option] ${Std.string(e)}. Setting back to Full.');
       windowMode = 'full';
     }
 
@@ -104,11 +109,14 @@ class DebugWindow extends Module
   {
     try
     {
+      if (!(value >= 0.0 && value <= 1.0))
+        throw 'Invalid window opacity value: $value';
+
       windowOpacity = value;
     }
-    catch (_:Dynamic)
+    catch (e:Dynamic)
     {
-      log('[Window Opacity Option] Fallback to 40%.');
+      log('[Window Opacity Option] ${Std.string(e)}. Setting back to 40%.');
       windowOpacity = 0.4;
     }
 
