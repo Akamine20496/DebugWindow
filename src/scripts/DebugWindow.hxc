@@ -28,15 +28,19 @@ class DebugWindow extends Module
   var windowsCreated:Bool = false;
 
   // Window properties
-  var statusWindowWidth:Int = 340;
+  var statusWindowWidth:Int = 380;
   var logWindowWidth:Int = 380;
   var windowHeight:Int = 80;
   var maxWindowHeight:Int = 360;
   var titleBarHeight:Int = 34;
   var cornerRadius:Float = 18;
+  // previous height of the windows
+  var lastStatusHeight:Int = -1;
+  var lastLogHeight:Int = -1;
 
   // Status window and OpenFL children
   var STATUS(default, null):Int = 0;
+  var defaultStatusContent:String = "[Status] Waiting for status update";
   var statusBackground:Shape;
   var statusTitleBar:Shape;
   var statusTitle:TextField;
@@ -44,6 +48,7 @@ class DebugWindow extends Module
 
   // Log window and OpenFL children
   var LOG(default, null):Int = 1;
+  var defaultLogContent:String = "[Log] Waiting for log update";
   var logBackground:Shape;
   var logTitleBar:Shape;
   var logTitle:TextField;
@@ -74,10 +79,10 @@ class DebugWindow extends Module
   var windowOpacity:Float;
 
   // resolved font names and embed state
-  var titleFontName:String = "_sans";
-  var titleFontEmbedded:Bool = false;
-  var contentFontName:String = "_sans";
-  var contentFontEmbedded:Bool = false;
+  var titleFontName:String;
+  var titleFontEmbedded:Bool;
+  var contentFontName:String;
+  var contentFontEmbedded:Bool;
 
   public function new()
   {
@@ -144,73 +149,41 @@ class DebugWindow extends Module
     }
   }
 
-  function loadAndRegisterFont(fontAssetPath:String, fallbackName:String = "_sans"):Dynamic
+  function loadAndRegisterFont(fontFileName:String, defaultFontName:String = "_sans"):
+    {
+      fontName:String,
+      embedded:Bool
+    }
   {
-    var candidates:Array<String> = [];
+    var resolvedFontPath:String = null;
 
-    if (fontAssetPath != null && StringTools.trim(fontAssetPath) != "")
+    // check if the font path is existing
+    if (fontFileName != null && StringTools.trim(fontFileName) != "")
     {
-      var resolvedFromPaths:String = Paths.font(fontAssetPath);
+      var fontFromPath:String = Paths.font(fontFileName);
 
-      if (resolvedFromPaths != null && StringTools.trim(resolvedFromPaths) != "")
+      if (fontFromPath != null)
       {
-        candidates.push(resolvedFromPaths);
-      }
-
-      if (!candidates.contains(fontAssetPath))
-      {
-        candidates.push(fontAssetPath);
+        resolvedFontPath = fontFromPath;
       }
     }
 
-    for (candidate in candidates)
-    {
-      var font:Font = null;
+    if (resolvedFontPath != null) {
+      // get the font using the path
+      var font:Font = FlxG.assets.getFont(resolvedFontPath);
+      // register the font
+      Font.registerFont(font);
 
-      if (Assets.exists(candidate))
-      {
-        try
-        {
-          font = Assets.getFont(candidate);
-        }
-        catch (_:Dynamic)
-        {
-          font = null;
-        }
-      }
-
-      if (font == null)
-      {
-        try
-        {
-          font = Font.fromFile(candidate);
-        }
-        catch (_:Dynamic)
-        {
-          font = null;
-        }
-      }
-
-      if (font != null)
-      {
-        try
-        {
-          Font.registerFont(font);
-        }
-        catch (_:Dynamic) {}
-
-        if (font.fontName != null && StringTools.trim(font.fontName) != "")
-        {
-          return {
-            fontName: font.fontName,
-            embedded: true
-          };
-        }
-      }
+      // return the custom font
+      return {
+        fontName: font.fontName,
+        embedded: true
+      };
     }
 
+    // return the default font
     return {
-      fontName: fallbackName,
+      fontName: defaultFontName,
       embedded: false
     };
   }
@@ -331,23 +304,15 @@ class DebugWindow extends Module
     return Math.round(1.0 / avgLowDelta);
   }
 
-  function drawTitleBarShape(bar:Shape, width:Float):Void
+  function drawShape(shape:Shape, width:Float, height:Float, color:Int)
   {
-    bar.graphics.clear();
-    bar.graphics.beginFill(0x243746, 1);
-    bar.graphics.drawRoundRect(0, 0, width, titleBarHeight, cornerRadius, cornerRadius);
-    bar.graphics.endFill();
+    shape.graphics.clear();
+    shape.graphics.beginFill(color);
+    shape.graphics.drawRoundRect(0, 0, width, height, cornerRadius, cornerRadius);
+    shape.graphics.endFill();
   }
 
-  function drawWindowBackground(bg:Shape, width:Float, height:Float):Void
-  {
-    bg.graphics.clear();
-    bg.graphics.beginFill(0x101820, 1);
-    bg.graphics.drawRoundRect(0, 0, width, height, cornerRadius, cornerRadius);
-    bg.graphics.endFill();
-  }
-
-  function createPanel(x:Float, y:Float, width:Int, height:Int, title:String, isConsole:Bool):
+  function createPanel(x:Float, y:Float, width:Int, height:Int, title:String, content:String, isConsole:Bool):
     {
       container:Sprite,
       background:Shape,
@@ -363,32 +328,34 @@ class DebugWindow extends Module
     container.mouseChildren = false;
 
     var background:Shape = new Shape();
-    drawWindowBackground(background, width, height);
+    drawShape(background, width, height, 0x101820); // draw background
     background.alpha = windowOpacity;
     container.addChild(background);
 
     var titleBar:Shape = new Shape();
-    drawTitleBarShape(titleBar, width);
+    drawShape(titleBar, width, titleBarHeight, 0x243746); // draw title bar
     titleBar.alpha = windowOpacity;
     container.addChild(titleBar);
 
     var titleFormat:TextFormat = new TextFormat(titleFontName, 20, 0xFFFFFF, true);
     var titleField:TextField = new TextField();
     titleField.embedFonts = titleFontEmbedded;
+    titleField.defaultTextFormat = titleFormat;
+    titleField.text = title;
     titleField.x = 8;
     titleField.y = 4;
     titleField.width = width - 16;
     titleField.height = titleBarHeight - 4;
     titleField.selectable = false;
     titleField.mouseEnabled = false;
-    titleField.text = title;
-    titleField.defaultTextFormat = titleFormat;
     container.addChild(titleField);
 
     var textColor:Int = isConsole ? 0x00FF00 : 0xFFFFFF;
-    var contentFormat:TextFormat = new TextFormat(contentFontName, isConsole ? 15 : 18, textColor, false);
+    var contentFormat:TextFormat = new TextFormat(contentFontName, isConsole ? 15 : 16, textColor, false);
     var contentField:TextField = new TextField();
     contentField.embedFonts = contentFontEmbedded;
+    contentField.defaultTextFormat = contentFormat;
+    contentField.text = content;
     contentField.x = 8;
     contentField.y = titleBarHeight + 8;
     contentField.width = width - 16;
@@ -397,8 +364,6 @@ class DebugWindow extends Module
     contentField.wordWrap = true;
     contentField.selectable = false;
     contentField.mouseEnabled = false;
-    contentField.text = "";
-    contentField.defaultTextFormat = contentFormat;
     container.addChild(contentField);
 
     attachToStage(container);
@@ -423,7 +388,7 @@ class DebugWindow extends Module
     var y:Float = 10;
     var statusWidth:Int = Std.int(Math.min(statusWindowWidth, Math.max(120, viewportWidth - 20)));
 
-    var statusPanel:Dynamic = createPanel(x, y, statusWidth, windowHeight, "STATUS", false);
+    var statusPanel:Dynamic = createPanel(x, y, statusWidth, windowHeight, "STATUS", defaultStatusContent, false);
     statusWindow = statusPanel.container;
     statusBackground = statusPanel.background;
     statusTitleBar = statusPanel.titleBar;
@@ -434,7 +399,7 @@ class DebugWindow extends Module
     var logWidth:Int = Std.int(Math.min(logWindowWidth, Math.max(120, viewportWidth - 20)));
     maxWindowHeight = Std.int(Math.max(windowHeight, viewportHeight - logY - 10));
 
-    var logPanel:Dynamic = createPanel(x, logY, logWidth, maxWindowHeight, "LOG HISTORY", true);
+    var logPanel:Dynamic = createPanel(x, logY, logWidth, windowHeight, "LOG HISTORY", defaultLogContent, true);
     logWindow = logPanel.container;
     logBackground = logPanel.background;
     logTitleBar = logPanel.titleBar;
@@ -508,6 +473,9 @@ class DebugWindow extends Module
     logTitle = null;
     logText = null;
 
+    lastStatusHeight = -1;
+    lastLogHeight = -1;
+
     windowsCreated = false;
   }
 
@@ -534,27 +502,37 @@ class DebugWindow extends Module
         var requiredHeight:Int = Math.ceil(statusText.textHeight + titleBarHeight + 18);
         var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
 
-        statusText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
-        drawWindowBackground(statusBackground, statusText.width + 16, targetHeight);
+        // resize if height is changed
+        if (targetHeight != lastStatusHeight)
+        {
+          lastStatusHeight = targetHeight;
+          statusText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+          drawShape(statusBackground, statusText.width + 16, targetHeight, 0x101820); // redraw background
 
-        // Reposition Debug Console whenever Status height changes.
-        updateLogPosition();
+          // Reposition Log whenever Status height changes.
+          updateLogPosition();
+        }
       }
       case LOG:
       {
         if (logWindow == null || logText == null || logBackground == null) return;
 
         var textContent:String = messages.join("\n");
-        logText.text = (textContent == "") ? "[Log] Waiting for log update" : textContent;
-
-        // process if only visible
-        if (!logWindow.visible) return;
+        logText.text = (textContent == "") ? defaultLogContent : textContent;
 
         var requiredHeight:Int = Math.ceil(logText.textHeight + titleBarHeight + 18);
         var targetHeight:Int = Std.int(Math.max(windowHeight, Math.min(requiredHeight, maxWindowHeight)));
 
-        logText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
-        drawWindowBackground(logBackground, logText.width + 16, targetHeight);
+        // resize if height is changed
+        if (targetHeight != lastLogHeight)
+        {
+          lastLogHeight = targetHeight;
+          logText.height = Math.max(20, targetHeight - (titleBarHeight + 12));
+          drawShape(logBackground, logText.width + 16, targetHeight, 0x101820); // redraw background
+        }
+
+        // Scroll to the newest lines when content exceeds the clamped height.
+        logText.scrollV = logText.maxScrollV;
       }
     }
   }
@@ -639,11 +617,11 @@ class DebugWindow extends Module
     super.onCreate(event);
 
     // register fonts from fonts/
-    var titleFontInfo:Dynamic = loadAndRegisterFont("fonts/GoogleSansCode-Bold.ttf");
+    var titleFontInfo:Dynamic = loadAndRegisterFont("GoogleSansCode-Bold.ttf");
     titleFontName = titleFontInfo.fontName;
     titleFontEmbedded = titleFontInfo.embedded;
 
-    var contentFontInfo:Dynamic = loadAndRegisterFont("fonts/GoogleSansCode-Medium.ttf");
+    var contentFontInfo:Dynamic = loadAndRegisterFont("GoogleSansCode-Medium.ttf");
     contentFontName = contentFontInfo.fontName;
     contentFontEmbedded = contentFontInfo.embedded;
 
@@ -695,6 +673,7 @@ class DebugWindow extends Module
 
     var elapsed:Float = event.elapsed / timeScale;
 
+    // record frame time and remove old one
     frameTimes.push(elapsed);
     if (frameTimes.length > maxSamples) frameTimes.shift();
 
@@ -733,8 +712,7 @@ class DebugWindow extends Module
   {
     messages.push(message);
 
-    while (messages.length > maxMessages)
-      messages.shift();
+    if (messages.length > maxMessages) messages.shift();
 
     updateText(LOG);
   }
